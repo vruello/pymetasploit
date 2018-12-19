@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+
 from httplib import HTTPConnection, HTTPSConnection
 import ssl
 from numbers import Number
@@ -230,38 +231,51 @@ class MsfRpcClient(object):
 			return nd
 		return item
 
+        
+        def call(self, method, *args):
+                """
+                Builds an RPC request and retrieves the result.
+                
+                Mandatory Arguments:
+                - method : the RPC call method name (e.g. db.clients)
 
-	def call(self, method, *args):
-		"""
-		Builds an RPC request and retrieves the result.
+                Optional Arguments:
+                - *args : the RPC method's parameters if necessary
 
-		Mandatory Arguments:
-		- method : the RPC call method name (e.g. db.clients)
+                Returns : RPC call result
+                """
+                l = [ method ]
+                l.extend(args)
+                if method == MsfRpcMethod.AuthLogin:
+                        # Generate tmp token
+                        self.client.request('POST', self.uri, packb(l), self._headers)
+                        r = self.client.getresponse()
+                        if r.status == 200:
+                                token = unpackb(r.read())['token']
 
-		Optional Arguments:
-		- *args : the RPC method's parameters if necessary
+                                # Generate permanent token
+                                body = packb([ 'auth.token_generate', token ])
+                                self.client.request('POST', self.uri, body, self._headers)
+                                r = self.client.getresponse()
 
-		Returns : RPC call result
-		"""
-		l = [method]
-		l.extend(args)
-		if method == MsfRpcMethod.AuthLogin:
-			self.client.request('POST', self.uri, packb(l), self._headers)
-			r = self.client.getresponse()
-			if r.status == 200:
-				return self.unpackb_wrapper(unpackb(r.read()))
-			raise MsfRpcError('An unknown error has occurred while logging in.')
-		elif self.authenticated:
-			l.insert(1, self.sessionid)
-			self.client.request('POST', self.uri, packb(l), self._headers)
-			r = self.client.getresponse()
-			if r.status == 200:
-				result = self.unpackb_wrapper(unpackb(r.read()))
-				if 'error' in result:
-					raise MsfRpcError(result['error_message'])
-				return result
-			raise MsfRpcError('An unknown error has occurred while performing the RPC call.')
-		raise MsfRpcError('You cannot perform this call because you are not authenticated.')
+                                if r.status == 200:
+                                        return unpackb(r.read())
+                
+                        raise MsfRpcError('An unknown error has occurred while logging in.')
+                elif self.authenticated:
+                        l.insert(1, self.sessionid)
+                        self.client.request('POST', self.uri, packb(l), self._headers)
+                        r = self.client.getresponse()
+                        if r.status == 200:
+                                result = unpackb(r.read())
+                                if 'error' in result:
+                                        raise MsfRpcError(result['error_message'])
+                                return result
+                        raise MsfRpcError('An unknown error has occurred while performing the RPC call.')
+                raise MsfRpcError('You cannot perform this call because you are not authenticated.')
+
+
+
 
 	@property
 	def core(self):
